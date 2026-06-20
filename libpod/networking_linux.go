@@ -5,8 +5,10 @@ package libpod
 import (
 	"fmt"
 	"net"
+	"os"
 	"strings"
 
+	"github.com/moby/sys/capability"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
@@ -16,6 +18,31 @@ import (
 	"go.podman.io/podman/v6/libpod/define"
 	"go.podman.io/podman/v6/pkg/rootless"
 )
+
+func hasCapNetAdmin() (bool, error) {
+	currentCaps, err := capability.NewPid2(0)
+	if err != nil {
+		return false, err
+	}
+	if err = currentCaps.Load(); err != nil {
+		return false, err
+	}
+	return currentCaps.Get(capability.EFFECTIVE, capability.CAP_NET_ADMIN), nil
+}
+
+func rootfulBridgeNetworkPreflight(hasNetAdmin func() (bool, error)) error {
+	// UID 0 inside a delegated container environment should use rootful
+	// networking semantics; fail clearly if the environment lacks the
+	// capability needed to configure bridge networking.
+	hasCap, err := hasNetAdmin()
+	if err != nil {
+		return fmt.Errorf("checking CAP_NET_ADMIN for rootful netavark bridge networking: %w", err)
+	}
+	if !hasCap {
+		return fmt.Errorf("rootful netavark bridge networking requires CAP_NET_ADMIN in the current environment; Podman is running as root but this capability is not available")
+	}
+	return nil
+}
 
 // Create and configure a new network namespace for a container
 func (r *Runtime) configureNetNS(ctr *Container, ctrNS string) (status map[string]types.StatusBlock, rerr error) {
@@ -44,6 +71,11 @@ func (r *Runtime) configureNetNS(ctr *Container, ctrNS string) (status map[strin
 	// This is effectively forcing net=none.
 	if len(networks) == 0 {
 		return nil, nil
+	}
+	if os.Geteuid() == 0 && !rootless.IsRootless() {
+		if err := rootfulBridgeNetworkPreflight(hasCapNetAdmin); err != nil {
+			return nil, err
+		}
 	}
 
 	netOpts := ctr.getNetworkOptions(networks)
