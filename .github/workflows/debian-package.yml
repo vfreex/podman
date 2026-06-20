@@ -1,0 +1,91 @@
+name: Debian package
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  debian-12:
+    name: Build Debian 12 packages
+    runs-on: ubuntu-latest
+    container:
+      image: debian:12
+    env:
+      DEB_BUILD_OPTIONS: nocheck
+      DEBEMAIL: github-actions[bot]@users.noreply.github.com
+      DEBFULLNAME: GitHub Actions
+      OBS_REPOSITORY_URL: http://download.opensuse.org/repositories/home:/alvistack/Debian_12/
+      OBS_REPOSITORY_KEY: https://download.opensuse.org/repositories/home:/alvistack/Debian_12/Release.key
+    steps:
+      - name: Install checkout tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git
+
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Add Alvistack Debian repository
+        run: |
+          apt-get install -y --no-install-recommends curl gnupg
+          install -d -m 0755 /etc/apt/keyrings
+          curl -fsSL "$OBS_REPOSITORY_KEY" | gpg --dearmor -o /etc/apt/keyrings/home_alvistack.gpg
+          echo "deb [signed-by=/etc/apt/keyrings/home_alvistack.gpg] $OBS_REPOSITORY_URL /" > /etc/apt/sources.list.d/home_alvistack.list
+          apt-get update
+
+      - name: Install Debian packaging tools
+        run: |
+          apt-get install -y --no-install-recommends build-essential debhelper devscripts dpkg-dev equivs fakeroot xz-utils
+
+      - name: Prepare Debian metadata
+        run: |
+          rm -rf debian
+          cp -a packaging/debian/alvistack debian
+
+          base_version="$(git describe --tags --match 'v[0-9]*' --abbrev=0 2>/dev/null | sed 's/^v//')"
+          if [ -z "$base_version" ]; then
+            base_version="0"
+          fi
+
+          short_sha="$(git rev-parse --short=12 HEAD)"
+          build_date="$(date -u +%Y%m%d)"
+          package_version="100:${base_version}~git${build_date}.${GITHUB_RUN_NUMBER}.${short_sha}-1"
+
+          dch --create \
+            --package podman \
+            --newversion "$package_version" \
+            --distribution unstable \
+            "Build ${GITHUB_REPOSITORY}@${GITHUB_SHA} from GitHub Actions."
+
+          dpkg-parsechangelog --show-field Version
+
+      - name: Install build dependencies
+        run: |
+          mk-build-deps --install --remove --tool "apt-get -y --no-install-recommends" debian/control
+
+      - name: Build binary packages
+        run: |
+          export PATH="/usr/lib/go-1.26/bin:$PATH"
+          go version
+          dpkg-buildpackage -us -uc -b
+
+      - name: Collect packages
+        run: |
+          mkdir -p artifacts
+          find .. -maxdepth 1 -type f \
+            \( -name "*.deb" -o -name "*.changes" -o -name "*.buildinfo" \) \
+            -exec cp -v {} artifacts/ \;
+          dpkg-deb -I artifacts/podman_*.deb
+
+      - name: Upload Debian packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: podman-debian-12-${{ github.run_number }}
+          path: artifacts/*
