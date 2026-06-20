@@ -8,7 +8,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/moby/sys/capability"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
@@ -17,18 +16,8 @@ import (
 	"go.podman.io/common/pkg/netns"
 	"go.podman.io/podman/v6/libpod/define"
 	"go.podman.io/podman/v6/pkg/rootless"
+	"go.podman.io/storage/pkg/unshare"
 )
-
-func hasCapNetAdmin() (bool, error) {
-	currentCaps, err := capability.NewPid2(0)
-	if err != nil {
-		return false, err
-	}
-	if err = currentCaps.Load(); err != nil {
-		return false, err
-	}
-	return currentCaps.Get(capability.EFFECTIVE, capability.CAP_NET_ADMIN), nil
-}
 
 func rootfulBridgeNetworkPreflight(hasNetAdmin func() (bool, error)) error {
 	// UID 0 inside a delegated container environment should use rootful
@@ -73,7 +62,7 @@ func (r *Runtime) configureNetNS(ctr *Container, ctrNS string) (status map[strin
 		return nil, nil
 	}
 	if os.Geteuid() == 0 && !rootless.IsRootless() {
-		if err := rootfulBridgeNetworkPreflight(hasCapNetAdmin); err != nil {
+		if err := rootfulBridgeNetworkPreflight(unshare.HasCapNetAdmin); err != nil {
 			return nil, err
 		}
 	}
