@@ -32,6 +32,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Trust checked out workspace
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - name: Add Alvistack Debian repository
         run: |
           apt-get install -y --no-install-recommends curl gnupg
