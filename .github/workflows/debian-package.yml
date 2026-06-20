@@ -10,17 +10,33 @@ permissions:
   contents: read
 
 jobs:
-  debian-12:
-    name: Build Debian 12 packages
+  build:
+    name: Build ${{ matrix.name }} packages
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Debian 12
+            image: debian:12
+            obs_repository: Debian_12
+            artifact: debian-12
+          - name: Debian 13
+            image: debian:13
+            obs_repository: Debian_13
+            artifact: debian-13
+          - name: Debian Testing
+            image: debian:testing
+            obs_repository: Debian_Testing
+            artifact: debian-testing
     container:
-      image: debian:12
+      image: ${{ matrix.image }}
     env:
       DEB_BUILD_OPTIONS: nocheck
       DEBEMAIL: github-actions[bot]@users.noreply.github.com
       DEBFULLNAME: GitHub Actions
-      OBS_REPOSITORY_URL: http://download.opensuse.org/repositories/home:/alvistack/Debian_12/
-      OBS_REPOSITORY_KEY: https://download.opensuse.org/repositories/home:/alvistack/Debian_12/Release.key
+      OBS_REPOSITORY_URL: http://download.opensuse.org/repositories/home:/alvistack/${{ matrix.obs_repository }}/
+      OBS_REPOSITORY_KEY: https://download.opensuse.org/repositories/home:/alvistack/${{ matrix.obs_repository }}/Release.key
     steps:
       - name: Install checkout tools
         run: |
@@ -90,5 +106,5 @@ jobs:
       - name: Upload Debian packages
         uses: actions/upload-artifact@v4
         with:
-          name: podman-debian-12-${{ github.run_number }}
+          name: podman-${{ matrix.artifact }}-${{ github.run_number }}
           path: artifacts/*
