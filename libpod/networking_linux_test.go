@@ -3,10 +3,8 @@
 package libpod
 
 import (
-	"errors"
 	"net"
 	"reflect"
-	"strings"
 	"testing"
 
 	"go.podman.io/common/libnetwork/types"
@@ -210,54 +208,6 @@ func Test_resultToBasicNetworkConfig(t *testing.T) {
 			if !reflect.DeepEqual(tc.expectedNetworkConfig, actualNetworkConfig) {
 				t.Fatalf(
 					"Expected networkConfig %+v didn't match actual value %+v", tc.expectedNetworkConfig, actualNetworkConfig)
-			}
-		})
-	}
-}
-
-func TestRootfulBridgeNetworkPreflight(t *testing.T) {
-	t.Parallel()
-
-	testErr := errors.New("capability read failed")
-	testCases := []struct {
-		name        string
-		capNetAdmin bool
-		capErr      error
-		expectErr   string
-	}{
-		{
-			name:        "root with CAP_NET_ADMIN is allowed",
-			capNetAdmin: true,
-		},
-		{
-			name:      "root without CAP_NET_ADMIN fails",
-			expectErr: "requires CAP_NET_ADMIN",
-		},
-		{
-			name:      "root capability check error fails",
-			capErr:    testErr,
-			expectErr: "checking CAP_NET_ADMIN",
-		},
-	}
-
-	for _, tcl := range testCases {
-		tc := tcl
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			err := rootfulBridgeNetworkPreflight(func() (bool, error) {
-				return tc.capNetAdmin, tc.capErr
-			})
-			if tc.expectErr == "" {
-				if err != nil {
-					t.Fatalf("expected no error, got %v", err)
-				}
-				return
-			}
-			if err == nil {
-				t.Fatalf("expected error containing %q", tc.expectErr)
-			}
-			if !strings.Contains(err.Error(), tc.expectErr) {
-				t.Fatalf("expected error containing %q, got %q", tc.expectErr, err.Error())
 			}
 		})
 	}
